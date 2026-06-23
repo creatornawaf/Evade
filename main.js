@@ -87,15 +87,16 @@ function animate() {
   if (network) {
     network.update(dt);
 
-    // send local state about 20 times per second
+    if (network.enemyState) {
+      world.updateEnemyFromServer(network.enemyState, player);
+    }
+
     player.lastSent += dt;
     if (player.lastSent >= 0.05) {
       player.lastSent = 0;
       network.sendLocalState(player.getNetState());
     }
   }
-
-  world.updateEnemy(dt, player, network.remotePlayers);
 
   renderer.render(scene, camera);
 }

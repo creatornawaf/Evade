@@ -47,13 +47,11 @@ export class World {
   }
 
   buildMap() {
-    // Outer borders
     this.addWall(0, 1.5, -20, 40, 3, 1);
     this.addWall(0, 1.5, 20, 40, 3, 1);
     this.addWall(-20, 1.5, 0, 1, 3, 40);
     this.addWall(20, 1.5, 0, 1, 3, 40);
 
-    // Inner walls / rooms
     this.addWall(-6, 1.5, -6, 12, 3, 1);
     this.addWall(8, 1.5, -2, 1, 3, 14);
     this.addWall(-10, 1.5, 8, 10, 3, 1);
@@ -62,24 +60,21 @@ export class World {
     this.addWall(13, 1.5, -11, 10, 3, 1);
     this.addWall(-14, 1.5, -12, 1, 3, 8);
 
-    // Decorations / obstacles
     this.addWall(0, 0.75, 0, 2, 1.5, 2, 0x885522);
     this.addWall(10, 0.75, 6, 2, 1.5, 2, 0x885522);
     this.addWall(-8, 0.75, -10, 2, 1.5, 2, 0x885522);
   }
 
   buildEnemy() {
-    const enemyMesh = new THREE.Mesh(
+    const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(1.2, 2.2, 1.2),
       new THREE.MeshStandardMaterial({ color: 0xff3b3b })
     );
-    enemyMesh.position.set(6, 1.1, 6);
-    this.scene.add(enemyMesh);
+    mesh.position.set(6, 1.1, 6);
+    this.scene.add(mesh);
 
     this.enemy = {
-      mesh: enemyMesh,
-      pos: enemyMesh.position,
-      speed: 3.5
+      mesh
     };
   }
 
@@ -112,45 +107,20 @@ export class World {
     return out;
   }
 
-  updateEnemy(dt, localPlayer, remotePlayersMap) {
-    if (!this.enemy) return;
+  updateEnemyFromServer(enemyState, localPlayer) {
+    if (!this.enemy || !enemyState) return;
 
-    let nearest = {
-      x: localPlayer.position.x,
-      z: localPlayer.position.z,
-      distSq: localPlayer.position.distanceToSquared(this.enemy.pos)
-    };
+    const mesh = this.enemy.mesh;
+    mesh.position.x += (enemyState.x - mesh.position.x) * 0.35;
+    mesh.position.y = enemyState.y ?? 1.1;
+    mesh.position.z += (enemyState.z - mesh.position.z) * 0.35;
 
-    for (const [, remote] of remotePlayersMap) {
-      const dx = remote.group.position.x - this.enemy.pos.x;
-      const dz = remote.group.position.z - this.enemy.pos.z;
-      const d = dx * dx + dz * dz;
-      if (d < nearest.distSq) {
-        nearest = {
-          x: remote.group.position.x,
-          z: remote.group.position.z,
-          distSq: d
-        };
-      }
-    }
-
-    const dir = new THREE.Vector3(
-      nearest.x - this.enemy.pos.x,
-      0,
-      nearest.z - this.enemy.pos.z
-    );
-
-    if (dir.lengthSq() > 0.0001) {
-      dir.normalize();
-      this.enemy.pos.x += dir.x * this.enemy.speed * dt;
-      this.enemy.pos.z += dir.z * this.enemy.speed * dt;
-    }
-
-    const dx = localPlayer.position.x - this.enemy.pos.x;
-    const dz = localPlayer.position.z - this.enemy.pos.z;
+    const dx = localPlayer.position.x - mesh.position.x;
+    const dz = localPlayer.position.z - mesh.position.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist < 1.4) {
-      localPlayer.takeDamage(22 * dt);
+
+    if (dist < 1.35) {
+      localPlayer.takeDamage(22 / 60);
     }
   }
 }

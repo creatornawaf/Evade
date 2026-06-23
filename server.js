@@ -1,17 +1,10 @@
 const express = require("express");
 const http = require("http");
-const cors = require("cors");
 const { Server } = require("socket.io");
 
-const PORT = process.env.PORT || 3000;
-
 const app = express();
-app.use(cors({
-  origin: "*"
-}));
-
 app.get("/", (req, res) => {
-  res.send("3D survival multiplayer server is running.");
+  res.send("Survival Chase server is running");
 });
 
 const server = http.createServer(app);
@@ -23,130 +16,126 @@ const io = new Server(server, {
   }
 });
 
-const players = {};
+const PORT = process.env.PORT || 3000;
+
+const players = new Map();
+
 const enemy = {
-  x: 6,
-  y: 1.1,
-  z: 6,
-  speed: 2.8
+  x: 0,
+  y: 1.2,
+  z: 0,
+  speed: 4.2,
+  targetPlayerId: null
 };
 
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function distanceSq(a, b) {
-  const dx = a.x - b.x;
-  const dz = a.z - b.z;
-  return dx * dx + dz * dz;
-}
-
-function getNearestPlayerToEnemy() {
-  let best = null;
-  let bestDist = Infinity;
-
-  for (const id in players) {
-    const p = players[id];
-    if (p.downed) continue;
-    const d = distanceSq(enemy, p);
-    if (d < bestDist) {
-      bestDist = d;
-      best = p;
-    }
-  }
-
-  return best;
-}
-
-function updateEnemy(dt) {
-  const target = getNearestPlayerToEnemy();
-  if (!target) return;
-
-  const dx = target.x - enemy.x;
-  const dz = target.z - enemy.z;
-  const len = Math.sqrt(dx * dx + dz * dz) || 1;
-
-  enemy.x += (dx / len) * enemy.speed * dt;
-  enemy.z += (dz / len) * enemy.speed * dt;
-
-  for (const id in players) {
-    const p = players[id];
-    const ddx = p.x - enemy.x;
-    const ddz = p.z - enemy.z;
-    const dist = Math.sqrt(ddx * ddx + ddz * ddz);
-
-    if (dist < 1.4 && !p.downed) {
-      p.health -= 20 * dt;
-      if (p.health <= 0) {
-        p.health = 0;
-        p.downed = true;
-      }
-    }
-  }
-}
-
 io.on("connection", (socket) => {
-  console.log("player connected", socket.id);
-
-  players[socket.id] = {
+  players.set(socket.id, {
     id: socket.id,
     name: "Player",
-    x: 0,
+    x: rand(-10, 10),
     y: 1.7,
-    z: 0,
+    z: rand(-10, 10),
     yaw: 0,
     pitch: 0,
-    health: 100,
-    stamina: 100,
-    downed: false
-  };
-
-  socket.emit("messageText", "Connected");
-
-  socket.on("joinGame", (data) => {
-    const p = players[socket.id];
-    if (!p) return;
-    if (data && typeof data.name === "string") {
-      p.name = data.name.slice(0, 16) || "Player";
-    }
+    health: 100
   });
 
-  socket.on("move", (state) => {
-    const p = players[socket.id];
+  socket.on("joinGame", (data) => {
+    const p = players.get(socket.id);
+    if (!p) return;
+
+    p.name = sanitizeName(data?.name || "Player");
+    socket.emit("joined", { id: socket.id });
+    socket.emit("serverMessage", "Joined match");
+  });
+
+  socket.on("playerUpdate", (state) => {
+    const p = players.get(socket.id);
     if (!p || !state) return;
 
-    // basic sanity limits
-    p.x = clamp(Number(state.x) || 0, -1000, 1000);
-    p.y = clamp(Number(state.y) || 1.7, 0, 50);
-    p.z = clamp(Number(state.z) || 0, -1000, 1000);
-    p.yaw = Number(state.yaw) || 0;
-    p.pitch = Number(state.pitch) || 0;
-    p.health = clamp(Number(state.health) || p.health, 0, 100);
-    p.stamina = clamp(Number(state.stamina) || p.stamina, 0, 100);
-    p.downed = !!state.downed;
+    p.x = clampNum(state.x, p.x);
+    p.y = clampNum(state.y, p.y);
+    p.z = clampNum(state.z, p.z);
+    p.yaw = clampNum(state.yaw, p.yaw);
+    p.pitch = clampNum(state.pitch, p.pitch);
+  });
+
+  socket.on("pingCheck", (data) => {
+    socket.emit("pongCheck", data);
   });
 
   socket.on("disconnect", () => {
-    console.log("player disconnected", socket.id);
-    delete players[socket.id];
+    players.delete(socket.id);
+    if (enemy.targetPlayerId === socket.id) {
+      enemy.targetPlayerId = null;
+    }
   });
 });
 
-let lastTick = Date.now();
 setInterval(() => {
-  const now = Date.now();
-  let dt = (now - lastTick) / 1000;
-  lastTick = now;
-  if (dt > 0.05) dt = 0.05;
+  updateEnemy(1 / 20);
 
-  updateEnemy(dt);
+  const state = {
+    players: Object.fromEntries(players.entries()),
+    enemy: {
+      x: enemy.x,
+      y: enemy.y,
+      z: enemy.z
+    }
+  };
 
-  io.emit("state", {
-    players,
-    enemy
-  });
+  io.emit("worldState", state);
 }, 50);
 
+function updateEnemy(dt) {
+  if (players.size === 0) return;
+
+  let target = null;
+  let bestDistSq = Infinity;
+
+  for (const p of players.values()) {
+    const dx = p.x - enemy.x;
+    const dz = p.z - enemy.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestDistSq) {
+      bestDistSq = d2;
+      target = p;
+    }
+  }
+
+  if (!target) return;
+  enemy.targetPlayerId = target.id;
+
+  const dx = target.x - enemy.x;
+  const dz = target.z - enemy.z;
+  const dist = Math.hypot(dx, dz);
+
+  if (dist > 0.001) {
+    enemy.x += (dx / dist) * enemy.speed * dt;
+    enemy.z += (dz / dist) * enemy.speed * dt;
+  }
+
+  if (dist < 1.5) {
+    target.health -= 8 * dt;
+    if (target.health < 0) target.health = 0;
+  } else {
+    target.health += 3 * dt;
+    if (target.health > 100) target.health = 100;
+  }
+}
+
+function sanitizeName(name) {
+  return String(name).trim().slice(0, 16) || "Player";
+}
+
+function clampNum(v, fallback = 0) {
+  return Number.isFinite(v) ? v : fallback;
+}
+
+function rand(a, b) {
+  return Math.random() * (b - a) + a;
+}
+
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server listening on ${PORT}`);
 });

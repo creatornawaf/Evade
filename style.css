@@ -162,9 +162,11 @@ canvas {
   border-radius: 10px;
   z-index: 30;
   font-size: 14px;
+  max-width: min(90vw, 420px);
+  text-align: center;
 }
 
-/* mobile controls */
+/* mobile */
 #mobileUI {
   position: fixed;
   inset: 0;

@@ -34,8 +34,25 @@ export class LocalPlayer {
 
     this.lastSent = 0;
 
+    // Mobile input state
+    this.mobileEnabled = this.isMobile();
+    this.mobileMoveX = 0; // -1..1
+    this.mobileMoveY = 0; // -1..1
+    this.lookTouchId = null;
+    this.moveTouchId = null;
+
+    // This is the key fix:
+    // movementYaw is the direction movement uses while keys are held.
+    // It does NOT keep changing every frame when camera turns.
+    this.movementYaw = 0;
+    this.prevMoving = false;
+
     this.setupInput();
     this.updateCamera();
+  }
+
+  isMobile() {
+    return window.matchMedia("(hover: none), (pointer: coarse)").matches;
   }
 
   setupInput() {
@@ -56,9 +73,9 @@ export class LocalPlayer {
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.sprinting = false;
     });
 
+    // Desktop look
     document.addEventListener("mousemove", (e) => {
       if (document.pointerLockElement !== document.body) return;
-
       const sensitivity = 0.0022;
       this.yaw -= e.movementX * sensitivity;
       this.pitch -= e.movementY * sensitivity;
@@ -67,6 +84,143 @@ export class LocalPlayer {
       this.pitch = Math.max(-limit, Math.min(limit, this.pitch));
       this.updateCamera();
     });
+
+    if (this.mobileEnabled) {
+      this.setupMobileControls();
+    }
+  }
+
+  setupMobileControls() {
+    const mobileUI = document.getElementById("mobileUI");
+    const movePad = document.getElementById("movePad");
+    const moveStick = document.getElementById("moveStick");
+    const lookArea = document.getElementById("lookArea");
+    const jumpBtn = document.getElementById("jumpBtn");
+    const sprintBtn = document.getElementById("sprintBtn");
+
+    if (!mobileUI || !movePad || !moveStick || !lookArea || !jumpBtn || !sprintBtn) return;
+
+    mobileUI.classList.remove("hidden");
+
+    const resetStick = () => {
+      moveStick.style.left = "43px";
+      moveStick.style.top = "43px";
+      this.mobileMoveX = 0;
+      this.mobileMoveY = 0;
+      this.moveTouchId = null;
+    };
+
+    const updateMoveFromTouch = (touch) => {
+      const rect = movePad.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      let dx = touch.clientX - cx;
+      let dy = touch.clientY - cy;
+
+      const max = rect.width * 0.33;
+      const len = Math.hypot(dx, dy);
+      if (len > max && len > 0) {
+        dx = (dx / len) * max;
+        dy = (dy / len) * max;
+      }
+
+      this.mobileMoveX = dx / max;
+      this.mobileMoveY = dy / max;
+
+      moveStick.style.left = `${rect.width / 2 - 32 + dx}px`;
+      moveStick.style.top = `${rect.height / 2 - 32 + dy}px`;
+    };
+
+    movePad.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      this.moveTouchId = t.identifier;
+      updateMoveFromTouch(t);
+      e.preventDefault();
+    }, { passive: false });
+
+    movePad.addEventListener("touchmove", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.moveTouchId) {
+          updateMoveFromTouch(t);
+          break;
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    movePad.addEventListener("touchend", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.moveTouchId) {
+          resetStick();
+          break;
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    movePad.addEventListener("touchcancel", resetStick, { passive: false });
+
+    let lastLookX = 0;
+    let lastLookY = 0;
+
+    lookArea.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      this.lookTouchId = t.identifier;
+      lastLookX = t.clientX;
+      lastLookY = t.clientY;
+      e.preventDefault();
+    }, { passive: false });
+
+    lookArea.addEventListener("touchmove", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.lookTouchId) {
+          const dx = t.clientX - lastLookX;
+          const dy = t.clientY - lastLookY;
+          lastLookX = t.clientX;
+          lastLookY = t.clientY;
+
+          const sensitivity = 0.004;
+          this.yaw -= dx * sensitivity;
+          this.pitch -= dy * sensitivity;
+
+          const limit = Math.PI / 2 - 0.05;
+          this.pitch = Math.max(-limit, Math.min(limit, this.pitch));
+          this.updateCamera();
+          break;
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    lookArea.addEventListener("touchend", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === this.lookTouchId) {
+          this.lookTouchId = null;
+          break;
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    jumpBtn.addEventListener("touchstart", (e) => {
+      this.wantJump = true;
+      e.preventDefault();
+    }, { passive: false });
+
+    sprintBtn.addEventListener("touchstart", (e) => {
+      this.sprinting = true;
+      e.preventDefault();
+    }, { passive: false });
+
+    sprintBtn.addEventListener("touchend", (e) => {
+      this.sprinting = false;
+      e.preventDefault();
+    }, { passive: false });
+
+    sprintBtn.addEventListener("touchcancel", () => {
+      this.sprinting = false;
+    }, { passive: false });
   }
 
   updateCamera() {
@@ -107,37 +261,64 @@ export class LocalPlayer {
       return;
     }
 
-    // input
-    const move = new THREE.Vector3();
-    if (this.moveForward) move.z -= 1;
-    if (this.moveBackward) move.z += 1;
-    if (this.moveLeft) move.x -= 1;
-    if (this.moveRight) move.x += 1;
-    move.normalize();
+    // keyboard movement
+    let inputX = 0;
+    let inputY = 0;
 
-    // fixed forward/right vectors
+    if (this.moveForward) inputY += 1;
+    if (this.moveBackward) inputY -= 1;
+    if (this.moveLeft) inputX -= 1;
+    if (this.moveRight) inputX += 1;
+
+    // mobile movement overrides / mixes in
+    if (this.mobileEnabled) {
+      inputX += this.mobileMoveX;
+      inputY += -this.mobileMoveY;
+    }
+
+    // clamp
+    const moveLen = Math.hypot(inputX, inputY);
+    let moveX = inputX;
+    let moveY = inputY;
+    if (moveLen > 1) {
+      moveX /= moveLen;
+      moveY /= moveLen;
+    }
+
+    const isMoving = Math.abs(moveX) > 0.001 || Math.abs(moveY) > 0.001;
+
+    // IMPORTANT FIX:
+    // lock movement direction basis when movement starts
+    // so turning camera while holding W doesn't flip motion
+    if (isMoving && !this.prevMoving) {
+      this.movementYaw = this.yaw;
+    }
+    this.prevMoving = isMoving;
+
+    const basisYaw = isMoving ? this.movementYaw : this.yaw;
+
     const forward = new THREE.Vector3(
-      Math.sin(this.yaw),
+      Math.sin(basisYaw),
       0,
-      -Math.cos(this.yaw)
+      -Math.cos(basisYaw)
     );
 
     const right = new THREE.Vector3(
-      Math.cos(this.yaw),
+      Math.cos(basisYaw),
       0,
-      Math.sin(this.yaw)
+      Math.sin(basisYaw)
     );
 
     const dir = new THREE.Vector3();
-    dir.addScaledVector(forward, -move.z);
-    dir.addScaledVector(right, move.x);
+    dir.addScaledVector(forward, moveY);
+    dir.addScaledVector(right, moveX);
 
     if (dir.lengthSq() > 0) dir.normalize();
 
     let speed = this.walkSpeed;
     const wantsSprint =
       this.sprinting &&
-      move.lengthSq() > 0 &&
+      isMoving &&
       this.stamina > 0;
 
     if (wantsSprint) {
@@ -199,15 +380,31 @@ export class RemotePlayer {
 
     this.group = new THREE.Group();
 
+    // brighter / more visible body
     const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.7, 1.7, 0.7),
-      new THREE.MeshStandardMaterial({ color: 0x3da5ff })
+      new THREE.BoxGeometry(0.8, 1.8, 0.8),
+      new THREE.MeshStandardMaterial({
+        color: 0x39a9ff,
+        emissive: 0x0f2f55,
+        roughness: 0.7,
+        metalness: 0.1
+      })
     );
-    body.position.y = 0.85;
+    body.position.y = 0.9;
     this.group.add(body);
 
+    // head
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.55, 0.55, 0.55),
+      new THREE.MeshStandardMaterial({
+        color: 0xe6e6e6
+      })
+    );
+    head.position.y = 1.95;
+    this.group.add(head);
+
     const label = this.makeLabel(name);
-    label.position.y = 2.3;
+    label.position.y = 2.65;
     this.group.add(label);
 
     this.scene.add(this.group);
@@ -226,11 +423,11 @@ export class RemotePlayer {
     canvas.height = 64;
     const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = "white";
-    ctx.font = "28px Arial";
+    ctx.font = "bold 28px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -238,11 +435,13 @@ export class RemotePlayer {
     const tex = new THREE.CanvasTexture(canvas);
     const mat = new THREE.SpriteMaterial({
       map: tex,
-      transparent: true
+      transparent: true,
+      depthTest: false
     });
 
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(2.5, 0.6, 1);
+    sprite.scale.set(2.8, 0.7, 1);
+    sprite.renderOrder = 999;
     return sprite;
   }
 

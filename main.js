@@ -8,11 +8,16 @@ const menu = document.getElementById("menu");
 const playBtn = document.getElementById("playBtn");
 const nameInput = document.getElementById("nameInput");
 const serverInput = document.getElementById("serverInput");
+const mobileUI = document.getElementById("mobileUI");
 
 let scene, camera, renderer;
 let world, player, hud, network;
 let lastTime = performance.now();
 let started = false;
+
+function isMobile() {
+  return window.matchMedia("(hover: none), (pointer: coarse)").matches;
+}
 
 function initThree() {
   scene = new THREE.Scene();
@@ -66,9 +71,13 @@ async function startGame() {
 
   menu.classList.add("hidden");
 
-  renderer.domElement.addEventListener("click", () => {
-    document.body.requestPointerLock();
-  });
+  if (isMobile()) {
+    mobileUI.classList.remove("hidden");
+  } else {
+    renderer.domElement.addEventListener("click", () => {
+      document.body.requestPointerLock();
+    });
+  }
 
   animate();
 }

@@ -66,7 +66,7 @@ async function startGame() {
     hud.flashMessage("Connected to server");
   } catch (err) {
     console.error(err);
-    hud.flashMessage("Failed to connect to server");
+    hud.flashMessage("Failed to connect server");
   }
 
   menu.classList.add("hidden");
@@ -90,24 +90,30 @@ function animate() {
   lastTime = now;
   if (dt > 0.05) dt = 0.05;
 
-  player.update(dt, world);
-  hud.updatePlayer(player);
+  if (player && world) {
+    player.update(dt, world);
+    hud.updatePlayer(player);
+  }
 
   if (network) {
     network.update(dt);
 
     if (network.enemyState) {
-      world.updateEnemyFromServer(network.enemyState, player);
+      world.updateEnemyFromServer(network.enemyState, player, dt);
     }
 
-    player.lastSent += dt;
-    if (player.lastSent >= 0.05) {
-      player.lastSent = 0;
-      network.sendLocalState(player.getNetState());
+    if (player) {
+      player.lastSent += dt;
+      if (player.lastSent >= 0.05) {
+        player.lastSent = 0;
+        network.sendLocalState(player.getNetState());
+      }
     }
   }
 
-  renderer.render(scene, camera);
+  if (renderer && scene && camera) {
+    renderer.render(scene, camera);
+  }
 }
 
 playBtn.addEventListener("click", startGame);

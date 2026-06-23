@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>3D Survival Starter</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
@@ -23,7 +23,7 @@
       </label>
 
       <button id="playBtn">Play</button>
-      <p class="small">After joining, click inside the game to lock the mouse.</p>
+      <p class="small">Desktop: click inside game to lock mouse. Mobile: use joystick + look area.</p>
     </div>
   </div>
 
@@ -55,6 +55,18 @@
   </div>
 
   <div id="overlayMessage" class="hidden"></div>
+
+  <!-- Mobile controls -->
+  <div id="mobileUI" class="hidden">
+    <div id="movePad" class="touchPad left">
+      <div id="moveStick" class="stick"></div>
+    </div>
+
+    <div id="lookArea" class="touchLook"></div>
+
+    <button id="jumpBtn" class="mobileBtn jumpBtn">JUMP</button>
+    <button id="sprintBtn" class="mobileBtn sprintBtn">SPRINT</button>
+  </div>
 
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script type="module" src="./main.js"></script>

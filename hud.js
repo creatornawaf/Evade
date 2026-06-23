@@ -1,40 +1,46 @@
 export class HUD {
   constructor() {
-    this.hud = document.getElementById("hud");
+    this.root = document.getElementById("hud");
     this.healthText = document.getElementById("healthText");
     this.staminaText = document.getElementById("staminaText");
     this.statusText = document.getElementById("statusText");
     this.playersText = document.getElementById("playersText");
+    this.pingText = document.getElementById("pingText");
+
     this.healthBar = document.getElementById("healthBar");
     this.staminaBar = document.getElementById("staminaBar");
+
     this.overlay = document.getElementById("overlayMessage");
+    this.overlayTimeout = null;
   }
 
   show() {
-    this.hud.classList.remove("hidden");
+    this.root.classList.remove("hidden");
   }
 
   updatePlayer(player) {
-    const health = Math.max(0, Math.round(player.health));
-    const stamina = Math.max(0, Math.round(player.stamina));
-
-    this.healthText.textContent = health;
-    this.staminaText.textContent = stamina;
+    this.healthText.textContent = Math.round(player.health);
+    this.staminaText.textContent = Math.round(player.stamina);
     this.statusText.textContent = player.downed ? "Downed" : "Alive";
 
-    this.healthBar.style.width = `${health}%`;
-    this.staminaBar.style.width = `${stamina}%`;
+    this.healthBar.style.width = `${Math.max(0, Math.min(100, player.health))}%`;
+    this.staminaBar.style.width = `${Math.max(0, Math.min(100, player.stamina))}%`;
   }
 
-  setPlayerCount(n) {
+  setPlayersCount(n) {
     this.playersText.textContent = String(n);
   }
 
-  flashMessage(text, ms = 2000) {
-    this.overlay.textContent = text;
+  setPing(ms) {
+    this.pingText.textContent = ms == null ? "-" : `${Math.round(ms)}ms`;
+  }
+
+  flashMessage(msg, ms = 2500) {
+    this.overlay.textContent = msg;
     this.overlay.classList.remove("hidden");
-    clearTimeout(this._overlayTimeout);
-    this._overlayTimeout = setTimeout(() => {
+
+    if (this.overlayTimeout) clearTimeout(this.overlayTimeout);
+    this.overlayTimeout = setTimeout(() => {
       this.overlay.classList.add("hidden");
     }, ms);
   }

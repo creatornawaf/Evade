@@ -96,15 +96,18 @@ export class LocalPlayer {
       this.velocity.z = 0;
       this.velocity.y -= this.gravity * dt;
       this.position.y += this.velocity.y * dt;
+
       if (this.position.y < this.height) {
         this.position.y = this.height;
         this.velocity.y = 0;
         this.grounded = true;
       }
+
       this.updateCamera();
       return;
     }
 
+    // input
     const move = new THREE.Vector3();
     if (this.moveForward) move.z -= 1;
     if (this.moveBackward) move.z += 1;
@@ -112,16 +115,30 @@ export class LocalPlayer {
     if (this.moveRight) move.x += 1;
     move.normalize();
 
-    const forward = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-    const right = new THREE.Vector3(forward.z, 0, -forward.x);
+    // fixed forward/right vectors
+    const forward = new THREE.Vector3(
+      Math.sin(this.yaw),
+      0,
+      -Math.cos(this.yaw)
+    );
+
+    const right = new THREE.Vector3(
+      Math.cos(this.yaw),
+      0,
+      Math.sin(this.yaw)
+    );
 
     const dir = new THREE.Vector3();
     dir.addScaledVector(forward, -move.z);
     dir.addScaledVector(right, move.x);
+
     if (dir.lengthSq() > 0) dir.normalize();
 
     let speed = this.walkSpeed;
-    const wantsSprint = this.sprinting && move.lengthSq() > 0 && this.stamina > 0;
+    const wantsSprint =
+      this.sprinting &&
+      move.lengthSq() > 0 &&
+      this.stamina > 0;
 
     if (wantsSprint) {
       speed = this.sprintSpeed;
@@ -196,7 +213,10 @@ export class RemotePlayer {
     this.scene.add(this.group);
 
     this.target = {
-      x: 0, y: 1.7, z: 0, yaw: 0
+      x: 0,
+      y: 1.7,
+      z: 0,
+      yaw: 0
     };
   }
 
@@ -205,8 +225,10 @@ export class RemotePlayer {
     canvas.width = 256;
     canvas.height = 64;
     const ctx = canvas.getContext("2d");
+
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
     ctx.fillStyle = "white";
     ctx.font = "28px Arial";
     ctx.textAlign = "center";
@@ -214,7 +236,11 @@ export class RemotePlayer {
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
     const tex = new THREE.CanvasTexture(canvas);
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true
+    });
+
     const sprite = new THREE.Sprite(mat);
     sprite.scale.set(2.5, 0.6, 1);
     return sprite;
